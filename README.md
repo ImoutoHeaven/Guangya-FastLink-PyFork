@@ -99,6 +99,15 @@ guangya-fastlink generate-json \
   --workers 8
 ```
 
+仓库源码也支持直接执行同一组参数：
+
+```bash
+python guangya_fastlink/local_calculator.py \
+  --source-dir Movies \
+  --output-file movies.json \
+  --workers 8
+```
+
 输出记录包含：
 
 ```json

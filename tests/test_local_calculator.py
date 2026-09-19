@@ -3,6 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +15,7 @@ from guangya_fastlink.local_calculator import (
     generate_local_export,
     scan_local_files,
 )
+import guangya_fastlink.local_calculator as local_calculator_module
 from guangya_fastlink.models import iter_export_records
 
 
@@ -145,3 +149,20 @@ def test_output_symlink_is_replaced_without_touching_its_target(tmp_path):
     assert not output.is_symlink()
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert [entry["path"] for entry in payload["files"]] == ["/a.bin"]
+
+
+def test_direct_script_help_works_outside_repository(tmp_path):
+    script = Path(local_calculator_module.__file__).resolve()
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [sys.executable, str(script), "-h"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--source-dir" in result.stdout
+    assert "--output-file" in result.stdout

@@ -3,11 +3,15 @@ from __future__ import annotations
 import hashlib
 import os
 import stat as stat_module
+import sys
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guangya_fastlink.models import atomic_write_export
 
@@ -202,3 +206,14 @@ def _assert_unchanged(snapshot: FileSnapshot, stat) -> None:
     )
     if identity != expected:
         raise RuntimeError(f"file changed during calculation: {snapshot.path}")
+
+
+def main(argv=None) -> int:
+    from guangya_fastlink.__main__ import main as package_main
+
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    return package_main(["generate-json", *arguments])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

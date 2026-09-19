@@ -153,8 +153,13 @@ def test_output_symlink_is_replaced_without_touching_its_target(tmp_path):
 
 def test_direct_script_help_works_outside_repository(tmp_path):
     script = Path(local_calculator_module.__file__).resolve()
+    blocker = tmp_path / "blocked"
+    blocker.mkdir()
+    (blocker / "ijson.py").write_text(
+        'raise ImportError("ijson intentionally unavailable")', encoding="utf-8"
+    )
     environment = os.environ.copy()
-    environment.pop("PYTHONPATH", None)
+    environment["PYTHONPATH"] = str(blocker)
     result = subprocess.run(
         [sys.executable, str(script), "-h"],
         cwd=tmp_path,
@@ -166,3 +171,39 @@ def test_direct_script_help_works_outside_repository(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "--source-dir" in result.stdout
     assert "--output-file" in result.stdout
+
+
+def test_direct_script_generation_needs_no_third_party_packages(tmp_path):
+    script = Path(local_calculator_module.__file__).resolve()
+    blocker = tmp_path / "blocked"
+    blocker.mkdir()
+    (blocker / "ijson.py").write_text(
+        'raise ImportError("ijson intentionally unavailable")', encoding="utf-8"
+    )
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "a.bin").write_bytes(b"abc")
+    output = tmp_path / "out.json"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(blocker)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--source-dir",
+            str(source),
+            "--output-file",
+            str(output),
+            "--workers",
+            "2",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["files"][0]["gcid"] == "0D3CED9BEC10A777AEC23CCC353A8C08A633045E"

@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, TextIO
 
-import ijson
-
 from guangya_fastlink import __version__
 
 
@@ -128,6 +126,8 @@ def normalize_record(entry: object, *, source_index: int) -> SourceRecord:
 
 
 def inspect_export_scope(path: Path) -> ExportScope:
+    import ijson
+
     hasher = hashlib.sha256()
     saw_root = False
     saw_files = False
@@ -156,6 +156,8 @@ def inspect_export_scope(path: Path) -> ExportScope:
 
 
 def iter_export_records(path: Path) -> Iterator[SourceRecord]:
+    import ijson
+
     try:
         with path.open("rb") as handle:
             for index, entry in enumerate(ijson.items(handle, "files.item"), start=1):

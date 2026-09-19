@@ -108,6 +108,8 @@ python guangya_fastlink/local_calculator.py \
   --workers 8
 ```
 
+该直接入口只使用 Python 标准库，可以在尚未安装项目依赖时生成本地 GCID JSON。
+
 输出记录包含：
 
 ```json

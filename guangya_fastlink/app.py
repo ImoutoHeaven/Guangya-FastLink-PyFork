@@ -48,6 +48,10 @@ def run_cli(argv=None) -> int:
             from guangya_fastlink.batch import run_batch_check
 
             return run_batch_check(config=config, client=build_client())
+        if config.command == "compare_folder":
+            from guangya_fastlink.exporter import run_compare_folder
+
+            return run_compare_folder(client=build_client(), config=config)
 
         scope = inspect_export_scope(config.file_path)
         state = open_or_plan_import_state(

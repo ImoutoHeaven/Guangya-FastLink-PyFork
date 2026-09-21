@@ -68,3 +68,18 @@ def test_generate_json_configures_local_calculator(tmp_path):
     assert config.command == "generate_json"
     assert config.source_dir == source.resolve()
     assert config.workers == 3
+
+
+def test_compare_folder_directions_are_mutually_exclusive(tmp_path):
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "compare-folder",
+                "--local-folder",
+                str(tmp_path),
+                "--remote-folder-id",
+                "root",
+                "--local-only",
+                "--remote-only",
+            ]
+        )

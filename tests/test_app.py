@@ -123,3 +123,54 @@ def test_generate_json_cli_needs_no_credentials(tmp_path, monkeypatch):
         == 0
     )
     assert json.loads(output.read_text(encoding="utf-8"))["sourceTag"] == "local"
+
+
+def test_compare_folder_prints_only_local_files_missing_remotely(
+    tmp_path, monkeypatch, capsys
+):
+    local = tmp_path / "local"
+    (local / "foldert").mkdir(parents=True)
+    (local / "matching.txt").write_text("local", encoding="utf-8")
+    (local / "missing_file1.txt").write_text("missing", encoding="utf-8")
+    (local / "foldert" / "present.txt").write_text("local", encoding="utf-8")
+    (local / "foldert" / "m2.txt").write_text("missing", encoding="utf-8")
+
+    class CompareClient:
+        def list_page(self, *, parent_id, page, page_size=50):
+            items = {
+                "remote-root": [
+                    {"fileId": "matching", "fileName": "matching.txt", "resType": 1,
+                     "fileSize": 5, "gcid": GCID},
+                    {"fileId": "foldert", "fileName": "foldert", "resType": 2},
+                    {"fileId": "remote-only", "fileName": "remote-only.txt", "resType": 1,
+                     "fileSize": 5, "gcid": GCID},
+                ],
+                "foldert": [
+                    {"fileId": "present", "fileName": "present.txt", "resType": 1,
+                     "fileSize": 5, "gcid": GCID},
+                ],
+            }.get(parent_id, [])
+            page_items = items if page == 0 else []
+            return Decision(
+                DecisionKind.COMPLETED,
+                payload={"items": page_items, "total": len(items)},
+            )
+
+    monkeypatch.setattr(app, "build_client", CompareClient)
+
+    argv = [
+        "compare-folder",
+        "--local-folder",
+        str(local),
+        "--remote-folder-id",
+        "remote-root",
+    ]
+    for direction in ([], ["--local-only"]):
+        assert app.run_cli([*argv, *direction]) == 0
+        assert capsys.readouterr().out.splitlines() == [
+            "/foldert/m2.txt",
+            "/missing_file1.txt",
+        ]
+
+    assert app.run_cli([*argv, "--remote-only"]) == 0
+    assert capsys.readouterr().out.splitlines() == ["/remote-only.txt"]

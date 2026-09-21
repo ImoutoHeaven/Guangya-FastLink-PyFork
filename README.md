@@ -141,6 +141,33 @@ worker 会在文件级和块级之间自动分配：大量文件并行计算多�
 
 普通目录使用网页 URL 中的数字目录 ID。
 
+## 本地与远端目录比较
+
+递归比较本地目录与光鸭目录中的文件路径，并把仅存在于本地的相对路径写入标准输出：
+
+```bash
+guangya-fastlink compare-folder \
+  --local-folder /path/to/folder \
+  --remote-folder-id 123456789 \
+  > missing.txt
+```
+
+默认方向与 `--local-only` 等价，输出本地存在而远端缺少的文件。`--remote-only` 输出远端存在而本地缺少的文件。两个方向参数互斥：
+
+```bash
+guangya-fastlink compare-folder \
+  --local-folder /path/to/folder \
+  --remote-folder-id 123456789 \
+  --remote-only
+```
+
+命令将两端的文件路径载入内存，以 `/` 开头并按字典序输出所选方向的差集。比较键为相对于两端指定目录的文件路径。`--local-only` 输出示例：
+
+```text
+/foldert/m2.txt
+/missing_file1.txt
+```
+
 ## 单文件导入
 
 规划并检查 JSON，不改变远端内容：

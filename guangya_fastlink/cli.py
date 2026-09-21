@@ -49,6 +49,19 @@ def build_parser() -> argparse.ArgumentParser:
     batch_check.add_argument("--exist-only", action="store_true")
     batch_check.add_argument("--with-checksum", action="store_true")
 
+    compare_folder = commands.add_parser("compare-folder")
+    compare_folder.set_defaults(command="compare_folder", compare_mode="local_only")
+    compare_folder.add_argument("--local-folder", required=True)
+    compare_folder.add_argument("--remote-folder-id", required=True)
+    compare_folder.add_argument("--max-retries", type=int, default=5)
+    compare_direction = compare_folder.add_mutually_exclusive_group()
+    compare_direction.add_argument(
+        "--local-only", action="store_const", const="local_only", dest="compare_mode"
+    )
+    compare_direction.add_argument(
+        "--remote-only", action="store_const", const="remote_only", dest="compare_mode"
+    )
+
     generate_json = commands.add_parser("generate-json")
     generate_json.set_defaults(command="generate_json")
     generate_json.add_argument("--source-dir", required=True)

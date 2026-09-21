@@ -71,8 +71,17 @@ class LocalGenerateConfig:
     command: str = "generate_json"
 
 
+@dataclass(frozen=True)
+class CompareFolderConfig:
+    local_folder: Path
+    remote_folder_id: str
+    max_retries: int
+    compare_mode: str
+    command: str = "compare_folder"
+
+
 def build_config(args):
-    if args.workers < 1:
+    if hasattr(args, "workers") and args.workers < 1:
         raise ValueError("workers must be >= 1")
     if hasattr(args, "max_retries") and args.max_retries < 0:
         raise ValueError("max_retries must be >= 0")
@@ -134,6 +143,13 @@ def build_config(args):
             json_parallelism=args.json_parallelism,
             max_retries=args.max_retries,
             compare_mode="with_checksum" if args.with_checksum else "exist_only",
+        )
+    if args.command == "compare_folder":
+        return CompareFolderConfig(
+            local_folder=Path(args.local_folder).resolve(),
+            remote_folder_id=normalize_parent_id(args.remote_folder_id),
+            max_retries=args.max_retries,
+            compare_mode=args.compare_mode,
         )
     if args.command == "generate_json":
         raw_output = Path(args.output_file)

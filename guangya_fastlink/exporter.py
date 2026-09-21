@@ -37,6 +37,39 @@ class ExportState:
     output_committed: bool = False
 
 
+def run_compare_folder(*, client, config) -> int:
+    root = config.local_folder
+    if not root.is_dir():
+        raise ValueError("local folder must be an existing directory")
+    local_paths = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+    remote_paths: set[str] = set()
+    pending = [DirectoryTask(config.remote_folder_id, "")]
+    seen = {config.remote_folder_id}
+    while pending:
+        child_dirs, records = _scan_directory(
+            client=client,
+            task=pending.pop(),
+            max_retries=config.max_retries,
+        )
+        remote_paths.update(record["path"] for record in records)
+        for child in child_dirs:
+            if child.file_id not in seen:
+                seen.add(child.file_id)
+                pending.append(child)
+    difference = (
+        remote_paths - local_paths
+        if config.compare_mode == "remote_only"
+        else local_paths - remote_paths
+    )
+    for path in sorted(difference):
+        safe_print(f"/{path}")
+    return 0
+
+
 def run_export(*, client, config) -> int:
     state_path = config.state_file
     records_path = state_path.with_suffix(".records.jsonl")

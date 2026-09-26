@@ -117,3 +117,20 @@ def test_export_rejects_empty_remote_id(tmp_path):
     client.items = {"root": [{"fileId": "", "fileName": "dir", "resType": 2}]}
     with pytest.raises(RuntimeError, match="missing name or id"):
         run_export(client=client, config=cfg)
+
+
+def test_export_rejects_unvalidated_checkpoint_without_changing_artifacts(tmp_path):
+    cfg = config(tmp_path)
+    client = FakeListClient()
+    client.items = {"root": []}
+    with pytest.raises(RuntimeError, match="zero files"):
+        run_export(client=client, config=cfg)
+    payload = json.loads(cfg.state_file.read_text(encoding="utf-8"))
+    payload.pop("listing_version", None)
+    cfg.state_file.write_text(json.dumps(payload), encoding="utf-8")
+    cfg.output_file.write_text("previous output", encoding="utf-8")
+    state_bytes = cfg.state_file.read_bytes()
+    with pytest.raises(ValueError, match="pagination validation"):
+        run_export(client=FakeListClient(), config=cfg)
+    assert cfg.state_file.read_bytes() == state_bytes
+    assert cfg.output_file.read_text(encoding="utf-8") == "previous output"

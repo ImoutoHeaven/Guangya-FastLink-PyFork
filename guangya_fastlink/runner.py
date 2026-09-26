@@ -24,6 +24,51 @@ def compute_backoff(attempt: int) -> float:
     return min(30.0, float(2**attempt)) + random.uniform(0.0, 0.5)
 
 
+def list_remote_children(*, client, parent_id: str, max_retries: int) -> list[dict]:
+    """Return a complete directory or fail before publishing a partial listing."""
+    items: list[dict] = []
+    seen_ids: set[str] = set()
+    expected_total = None
+    page = 0
+    while True:
+        decision = call_with_retries(
+            lambda: client.list_page(parent_id=parent_id, page=page),
+            max_retries=max_retries,
+        )
+        if decision.kind is DecisionKind.CREDENTIAL_FATAL:
+            raise CredentialFatalError(decision.error or "credential failure")
+        if decision.kind is not DecisionKind.COMPLETED:
+            raise RuntimeError(decision.error or "directory listing failed")
+        page_items = decision.payload["items"]
+        total = decision.payload["total"]
+        if expected_total is None:
+            expected_total = total
+        elif total != expected_total:
+            raise RuntimeError("directory listing total changed; rerun to rescan")
+        for item in page_items:
+            if not isinstance(item, dict):
+                raise RuntimeError("invalid remote file-list item")
+            try:
+                file_id = normalize_remote_id(item.get("fileId"))
+            except ValueError as exc:
+                raise RuntimeError(
+                    "invalid remote file-list item: missing name or id"
+                ) from exc
+            if file_id in seen_ids:
+                raise RuntimeError(
+                    f"duplicate remote fileId: {file_id}; rerun to rescan"
+                )
+            seen_ids.add(file_id)
+            items.append({**item, "fileId": file_id})
+        if len(items) > expected_total:
+            raise RuntimeError("directory listing exceeds total; rerun to rescan")
+        if len(items) == expected_total:
+            return items
+        if not page_items:
+            raise RuntimeError("incomplete directory listing; rerun to rescan")
+        page += 1
+
+
 class RemoteTreeCoordinator:
     def __init__(self, client) -> None:
         self.client = client
@@ -45,32 +90,12 @@ class RemoteTreeCoordinator:
             with self._cache_lock:
                 if not refresh and parent_id in self._children:
                     return self._children[parent_id]
-            items: list[dict] = []
-            page = 0
-            while True:
-                decision = call_with_retries(
-                    lambda: self.client.list_page(parent_id=parent_id, page=page),
-                    max_retries=max_retries,
-                )
-                if decision.kind is DecisionKind.CREDENTIAL_FATAL:
-                    raise CredentialFatalError(decision.error or "credential failure")
-                if decision.kind is not DecisionKind.COMPLETED:
-                    raise RuntimeError(decision.error or "directory listing failed")
-                page_items = decision.payload["items"]
-                total = decision.payload["total"]
-                items.extend(page_items)
-                if not page_items or len(items) >= total:
-                    break
-                page += 1
+            items = list_remote_children(
+                client=self.client, parent_id=parent_id, max_retries=max_retries
+            )
             children = {}
             for item in items:
-                if not isinstance(item, dict):
-                    raise RuntimeError("invalid remote file-list item")
                 name = item.get("fileName")
-                try:
-                    file_id = normalize_remote_id(item.get("fileId"))
-                except ValueError as exc:
-                    raise RuntimeError("invalid remote file-list item") from exc
                 if (
                     not isinstance(name, str)
                     or not name
@@ -79,9 +104,7 @@ class RemoteTreeCoordinator:
                     raise RuntimeError("invalid remote file-list item")
                 if name in children:
                     raise RuntimeError(f"duplicate remote child name: {name}")
-                normalized_item = dict(item)
-                normalized_item["fileId"] = file_id
-                children[name] = normalized_item
+                children[name] = item
             with self._cache_lock:
                 self._children[parent_id] = children
             return children

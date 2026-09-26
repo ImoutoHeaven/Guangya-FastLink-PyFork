@@ -8,18 +8,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from guangya_fastlink.api import DecisionKind
 from guangya_fastlink.models import (
     atomic_write_export,
     inspect_export_scope,
     iter_export_records,
     normalize_gcid,
-    normalize_remote_id,
     normalize_relative_path,
     parse_size,
     write_export_json,
 )
-from guangya_fastlink.runner import call_with_retries, safe_print
+from guangya_fastlink.runner import list_remote_children, safe_print
 
 
 @dataclass(frozen=True)
@@ -38,6 +36,7 @@ class ExportState:
     files_written: int = 0
     dirs_completed: int = 0
     output_committed: bool = False
+    listing_version: int = 1
 
 
 def run_compare_folder(*, client, config) -> int:
@@ -177,38 +176,15 @@ def run_export(*, client, config) -> int:
 
 
 def _scan_directory(*, client, task: DirectoryTask, max_retries: int):
-    items = []
-    page = 0
-    expected_total = 0
-    while True:
-        decision = call_with_retries(
-            lambda: client.list_page(parent_id=task.file_id, page=page),
-            max_retries=max_retries,
-        )
-        if decision.kind is DecisionKind.CREDENTIAL_FATAL:
-            raise RuntimeError(decision.error or "credential failure")
-        if decision.kind is not DecisionKind.COMPLETED:
-            raise RuntimeError(decision.error or "directory scan failed")
-        page_items = decision.payload["items"]
-        total = decision.payload["total"]
-        expected_total = max(expected_total, total)
-        items.extend(page_items)
-        if len(items) >= expected_total:
-            break
-        if not page_items:
-            raise RuntimeError("incomplete directory listing")
-        page += 1
+    items = list_remote_children(
+        client=client, parent_id=task.file_id, max_retries=max_retries
+    )
 
     child_dirs = []
     records = []
     for item in items:
-        if not isinstance(item, dict):
-            raise RuntimeError("invalid file-list item")
         name = item.get("fileName")
-        try:
-            file_id = normalize_remote_id(item.get("fileId"))
-        except ValueError as exc:
-            raise RuntimeError("file-list item missing name or id") from exc
+        file_id = item["fileId"]
         if not isinstance(name, str) or not name:
             raise RuntimeError("file-list item missing name or id")
         relative_path = name if not task.relative_dir else f"{task.relative_dir}/{name}"
@@ -364,6 +340,10 @@ def _load_or_initialize_state(
             state = ExportState(**payload)
         except Exception as exc:
             raise ValueError("malformed export state") from exc
+        if payload.get("listing_version") != 1:
+            raise ValueError(
+                "export state lacks current pagination validation; use a new --state-file"
+            )
         if (
             state.source_parent_id != source_parent_id
             or state.output_file != expected_output

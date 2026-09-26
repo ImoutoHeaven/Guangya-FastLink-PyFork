@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from types import SimpleNamespace
 
 from guangya_fastlink.api import Decision, DecisionKind
@@ -83,3 +84,23 @@ def test_switching_compare_mode_reuses_state_and_removes_stale_delta(tmp_path):
     assert run_batch_check(config=cfg, client=client) == 0
     assert not output.exists()
     assert client.list_calls == calls_after_scan
+
+
+def test_v2_snapshot_is_rescanned_before_reusing_missing_results(tmp_path):
+    class EmptyClient(FakeClient):
+        def list_page(self, **kwargs):
+            return Decision(DecisionKind.COMPLETED, payload={"items": [], "total": 0})
+
+    cfg = config(tmp_path)
+    assert run_batch_check(config=cfg, client=EmptyClient(matching=True)) == 0
+    output = cfg.output_dir / "one.delta.export.json"
+    assert output.exists()
+    # Persist the same schema-v2 cache shape produced by the old paginator.
+    with sqlite3.connect(cfg.state_dir / "one.check-state.sqlite3") as connection:
+        connection.execute("UPDATE job SET schema_version = 2")
+    client = FakeClient(matching=True)
+    assert run_batch_check(config=cfg, client=client) == 0
+    assert client.list_calls == 2
+    assert not output.exists()
+    assert run_batch_check(config=cfg, client=client) == 0
+    assert client.list_calls == 2

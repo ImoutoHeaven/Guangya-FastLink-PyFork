@@ -9,7 +9,7 @@ from pathlib import Path
 from guangya_fastlink.models import atomic_write_export, iter_export_records
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SQLITE_HEADER = b"SQLite format 3\x00"
 MALFORMED_STATE_ERROR = "malformed check state"
 MISMATCH_ERROR = "check state scope mismatch"
@@ -253,10 +253,31 @@ def open_or_plan_check_state(
             row = connection.execute(
                 "SELECT schema_version, source_sha256, target_parent_id, compare_mode FROM job WHERE singleton = 1"
             ).fetchone()
-            if row is None or int(row[0]) != SCHEMA_VERSION:
+            if row is None or int(row[0]) not in {2, SCHEMA_VERSION}:
                 raise ValueError(MALFORMED_STATE_ERROR)
             if str(row[1]) != source_sha256 or str(row[2]) != target_parent_id:
                 raise ValueError(MISMATCH_ERROR)
+            if int(row[0]) == 2:
+                # v2 listings may have been truncated; retain the local plan only.
+                with connection:
+                    connection.execute(
+                        "UPDATE dirs SET remote_id = NULL, status = 'pending'"
+                    )
+                    connection.execute(
+                        """
+                        UPDATE files SET remote_scanned = 0, remote_present = 0,
+                            remote_res_type = NULL, remote_gcid = NULL, remote_size = NULL,
+                            status = 'pending'
+                        """
+                    )
+                    connection.execute(
+                        """
+                        UPDATE job SET schema_version = ?, check_complete = 0,
+                            delta_files = 0, missing_dirs = 0, last_flush_at = ?
+                        WHERE singleton = 1
+                        """,
+                        (SCHEMA_VERSION, _now()),
+                    )
             if str(row[3]) != compare_mode:
                 with connection:
                     connection.execute(

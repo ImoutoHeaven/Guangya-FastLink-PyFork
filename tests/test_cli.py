@@ -83,3 +83,49 @@ def test_compare_folder_directions_are_mutually_exclusive(tmp_path):
                 "--remote-only",
             ]
         )
+
+
+@pytest.mark.parametrize(
+    "options, error",
+    [
+        ([], SystemExit),
+        (["--local-folder", ".", "--local-json", "local.json"], SystemExit),
+        (["--local-json", "local.json"], ValueError),
+        (["--local-json", "", "--output-file", "out.json"], ValueError),
+        (["--local-folder", ".", "--output-file", "out.json"], ValueError),
+        (["--local-json", "local.json", "--output-file", "local.json"], ValueError),
+        (
+            [
+                "--local-json",
+                "local.json",
+                "--output-file",
+                "out.json",
+                "--local-only",
+                "--remote-only",
+            ],
+            SystemExit,
+        ),
+    ],
+)
+def test_compare_json_argument_contract(options, error):
+    with pytest.raises(error):
+        parse_args(["compare-folder", "--remote-folder-id", "root", *options])
+
+
+def test_compare_json_rejects_output_alias(tmp_path):
+    source = tmp_path / "local.json"
+    source.write_text('{"files": []}', encoding="utf-8")
+    alias = tmp_path / "alias.json"
+    alias.hardlink_to(source)
+    with pytest.raises(ValueError, match="distinct"):
+        parse_args(
+            [
+                "compare-folder",
+                "--local-json",
+                str(source),
+                "--remote-folder-id",
+                "root",
+                "--output-file",
+                str(alias),
+            ]
+        )

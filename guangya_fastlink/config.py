@@ -73,7 +73,9 @@ class LocalGenerateConfig:
 
 @dataclass(frozen=True)
 class CompareFolderConfig:
-    local_folder: Path
+    local_folder: Path | None
+    local_json: Path | None
+    output_file: Path | None
     remote_folder_id: str
     max_retries: int
     compare_mode: str
@@ -145,8 +147,34 @@ def build_config(args):
             compare_mode="with_checksum" if args.with_checksum else "exist_only",
         )
     if args.command == "compare_folder":
+        if args.local_json is not None:
+            if not args.local_json.strip():
+                raise ValueError("--local-json must name a JSON file")
+            if not args.output_file:
+                raise ValueError("--local-json requires --output-file")
+        if args.local_folder is not None and args.output_file is not None:
+            raise ValueError(
+                "--output-file requires --local-json; redirect path output instead"
+            )
+        source = Path(args.local_json).resolve() if args.local_json else None
+        output = Path(args.output_file).resolve() if args.output_file else None
+        if (
+            source is not None
+            and output is not None
+            and (
+                source == output
+                or (source.exists() and output.exists() and source.samefile(output))
+            )
+        ):
+            raise ValueError("output file must be distinct from local JSON")
         return CompareFolderConfig(
-            local_folder=Path(args.local_folder).resolve(),
+            local_folder=(
+                Path(args.local_folder).resolve()
+                if args.local_folder is not None
+                else None
+            ),
+            local_json=source,
+            output_file=output,
             remote_folder_id=normalize_parent_id(args.remote_folder_id),
             max_retries=args.max_retries,
             compare_mode=args.compare_mode,

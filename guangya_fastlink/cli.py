@@ -51,8 +51,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     compare_folder = commands.add_parser("compare-folder")
     compare_folder.set_defaults(command="compare_folder", compare_mode="local_only")
-    compare_folder.add_argument("--local-folder", required=True)
+    compare_source = compare_folder.add_mutually_exclusive_group(required=True)
+    compare_source.add_argument("--local-folder", help="compare relative file paths")
+    compare_source.add_argument(
+        "--local-json", help="compare GCIDs from a rapid-transfer JSON"
+    )
     compare_folder.add_argument("--remote-folder-id", required=True)
+    compare_folder.add_argument("--output-file", help="required with --local-json")
     compare_folder.add_argument("--max-retries", type=int, default=5)
     compare_direction = compare_folder.add_mutually_exclusive_group()
     compare_direction.add_argument(

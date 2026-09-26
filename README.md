@@ -168,6 +168,35 @@ guangya-fastlink compare-folder \
 /missing_file1.txt
 ```
 
+### 按 GCID 比较秒传 JSON 与远端目录
+
+`--local-json` 接受本地计算器或导出器生成的秒传 JSON，按 GCID 判断内容是否存在，适用于远端文件已展平或重命名的目录：
+
+```bash
+guangya-fastlink compare-folder \
+  --local-json local.json \
+  --remote-folder-id 123456789 \
+  --output-file missing.json
+```
+
+`--local-json` 与 `--local-folder` 互斥。JSON 模式必须指定独立的 `--output-file`；目录模式通过标准输出提供路径列表。
+
+默认 `--local-only` 输出本地清单中 GCID 在远端目录树中完全不存在的记录，保留本地原始相对路径和受支持的可选字段。`--remote-only` 输出远端 GCID 在本地清单中完全不存在的记录，保留远端相对路径、fileId 和 parentId（根目录的空 parentId 沿用导出格式省略）：
+
+```bash
+guangya-fastlink compare-folder \
+  --local-json local.json \
+  --remote-folder-id 123456789 \
+  --remote-only \
+  --output-file remote-only.json
+```
+
+匹配键仅为统一大小写后的 GCID；路径、文件名、大小作为记录数据保留。比较使用内容存在性：另一侧任意一份相同 GCID 的文件即可匹配该内容的所有路径；完全缺失的内容会保留输出侧每条原始路径记录。结果按路径排序，使用现有 `files[].path/gcid/size` JSON 格式，汇总数量与大小按输出记录重新计算。local-only 的 `sourceTag` 为 `local`，remote-only 为 `guangya`。
+
+两侧记录载入内存，每次执行都会重新扫描完整远端目录树。本地文件变化后需重新生成本地 JSON。扫描及校验成功后原子替换输出；空差集写为 `files: []` 和零计数。输入错误、远端请求失败、分页提前结束或 GCID 无效时命令失败，并保留上一次有效输出。
+
+local-only 结果中的 `files[].path` 可直接交给支持此字段的链接生成脚本，用本地原始路径构建 HTTP(S) 补全链接。remote-only 路径以远端目录为基准。
+
 ## 单文件导入
 
 规划并检查 JSON，不改变远端内容：

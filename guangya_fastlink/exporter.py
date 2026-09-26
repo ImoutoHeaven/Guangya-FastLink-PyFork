@@ -10,6 +10,9 @@ from pathlib import Path
 
 from guangya_fastlink.api import DecisionKind
 from guangya_fastlink.models import (
+    atomic_write_export,
+    inspect_export_scope,
+    iter_export_records,
     normalize_gcid,
     normalize_remote_id,
     normalize_relative_path,
@@ -38,14 +41,21 @@ class ExportState:
 
 
 def run_compare_folder(*, client, config) -> int:
-    root = config.local_folder
-    if not root.is_dir():
-        raise ValueError("local folder must be an existing directory")
-    local_paths = {
-        path.relative_to(root).as_posix()
-        for path in root.rglob("*")
-        if path.is_file()
-    }
+    if config.local_json is not None:
+        inspect_export_scope(config.local_json)
+        local_records = [
+            asdict(record) for record in iter_export_records(config.local_json)
+        ]
+    else:
+        root = config.local_folder
+        if not root.is_dir():
+            raise ValueError("local folder must be an existing directory")
+        local_paths = {
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file()
+        }
+    remote_records = []
     remote_paths: set[str] = set()
     pending = [DirectoryTask(config.remote_folder_id, "")]
     seen = {config.remote_folder_id}
@@ -55,11 +65,35 @@ def run_compare_folder(*, client, config) -> int:
             task=pending.pop(),
             max_retries=config.max_retries,
         )
-        remote_paths.update(record["path"] for record in records)
+        if config.local_json is not None:
+            remote_records.extend(records)
+        else:
+            remote_paths.update(record["path"] for record in records)
         for child in child_dirs:
             if child.file_id not in seen:
                 seen.add(child.file_id)
                 pending.append(child)
+    if config.local_json is not None:
+        remote_only = config.compare_mode == "remote_only"
+        candidates, other = (
+            (remote_records, local_records)
+            if remote_only
+            else (local_records, remote_records)
+        )
+        other_gcids = {record["gcid"] for record in other}
+        difference = sorted(
+            (record for record in candidates if record["gcid"] not in other_gcids),
+            key=lambda record: record["path"],
+        )
+        atomic_write_export(
+            config.output_file,
+            records=difference,
+            total_files=len(difference),
+            total_size=sum(record["size"] for record in difference),
+            source_tag="guangya" if remote_only else "local",
+        )
+        safe_print(f"Compared: files={len(difference)} output={config.output_file}")
+        return 0
     difference = (
         remote_paths - local_paths
         if config.compare_mode == "remote_only"
@@ -145,6 +179,7 @@ def run_export(*, client, config) -> int:
 def _scan_directory(*, client, task: DirectoryTask, max_retries: int):
     items = []
     page = 0
+    expected_total = 0
     while True:
         decision = call_with_retries(
             lambda: client.list_page(parent_id=task.file_id, page=page),
@@ -156,9 +191,12 @@ def _scan_directory(*, client, task: DirectoryTask, max_retries: int):
             raise RuntimeError(decision.error or "directory scan failed")
         page_items = decision.payload["items"]
         total = decision.payload["total"]
+        expected_total = max(expected_total, total)
         items.extend(page_items)
-        if not page_items or len(items) >= total:
+        if len(items) >= expected_total:
             break
+        if not page_items:
+            raise RuntimeError("incomplete directory listing")
         page += 1
 
     child_dirs = []

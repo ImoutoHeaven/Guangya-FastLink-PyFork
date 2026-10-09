@@ -1,12 +1,12 @@
 # Guangya-FastLink-PyFork
 
-光鸭云盘 JSON 严格秒传命令行工具。项目提供递归导出、单文件导入、批量导入、批量差异检查、SQLite 中断续跑和 retry/delta JSON。
+A strict rapid-transfer CLI for Guangya cloud-drive JSON manifests. It supports recursive export, importing a single JSON manifest, batch import, batch difference checks, resumable SQLite state, and retry/delta JSON output.
 
-版本 0.1 使用服务端即时复用路径。单条记录只有在光鸭返回 `code=156` 时进入 `completed`；服务端准备普通上传任务时，客户端尝试清理该任务并记录为 `not_reusable`。文件内容下载、OSS 上传和跨网盘搬运位于当前版本范围之外。
+The CLI uses server-side instant reuse. A new transfer request succeeds only when Guangya returns `code=156`; when the server prepares a regular upload task, the client attempts to delete that task and records `not_reusable`. File downloads, OSS uploads, and transfers between cloud-drive providers are outside the tool's scope.
 
-## 安装
+## Installation
 
-需要 Python 3.11 或更高版本。
+Requires Python 3.11 or later.
 
 ```bash
 git clone https://github.com/ImoutoHeaven/Guangya-FastLink-PyFork.git
@@ -14,40 +14,40 @@ cd Guangya-FastLink-PyFork
 python -m pip install .
 ```
 
-安装后可使用：
+After installation, run:
 
 ```bash
 guangya-fastlink --help
 ```
 
-也可以直接运行：
+You can also run the module directly:
 
 ```bash
 python -m guangya_fastlink --help
 ```
 
-使用 `uv` 创建项目虚拟环境：
+To create a project virtual environment with `uv`:
 
 ```bash
 uv venv --python 3.11 .venv
 uv pip install --python .venv '.[test]'
 ```
 
-## 登录凭证
+## Credentials
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 $env:GUANGYA_ACCESS_TOKEN = '...'
 ```
 
-Linux、macOS 或 Git Bash：
+Linux, macOS, or Git Bash:
 
 ```bash
 export GUANGYA_ACCESS_TOKEN='...'
 ```
 
-可选的接口源地址（origin）：
+Optional API origin:
 
 ```powershell
 $env:GUANGYA_HOST = 'https://api.guangyapan.com'
@@ -57,13 +57,13 @@ $env:GUANGYA_HOST = 'https://api.guangyapan.com'
 export GUANGYA_HOST='https://api.guangyapan.com'
 ```
 
-Token 通过环境变量读取，并仅作为 `Authorization: Bearer ...` 请求头使用。状态数据库、导出 JSON 和普通日志均不保存 Token。
+The access token is read from the environment and used only in the `Authorization: Bearer ...` request header. State databases, exported JSON, and ordinary logs do not store the token.
 
-`import-json --dry-run` 和 `batch-import-json --dry-run` 只执行本地解析、规划与碰撞检查，因此无需设置 Token。
+`import-json --dry-run` and `batch-import-json --dry-run` perform only local parsing, planning, and collision checks, so they do not require a token.
 
-## JSON 格式
+## JSON Format
 
-输入文件兼容光鸭 userscript 导出的结构。每条记录的必需字段是 `path`、`gcid` 和 `size`：
+Input files are compatible with the structure exported by the Guangya userscript. Each record requires `path`, `gcid`, and `size`:
 
 ```json
 {
@@ -86,11 +86,11 @@ Token 通过环境变量读取，并仅作为 `Authorization: Bearer ...` 请求
 }
 ```
 
-路径以 `/` 表示导出根，导入时相对于 `--target-parent-id` 解析。GCID 必须是 40 位十六进制字符串；size 可以是非负整数或十进制字符串。
+Paths use `/` as the export root and are resolved relative to `--target-parent-id` during import. A GCID must be a 40-character hexadecimal string. `size` accepts a non-negative integer or a decimal-digit string, up to `2^63 - 1` bytes.
 
-## 本地 GCID 生成
+## Local GCID Generation
 
-递归扫描本地目录并生成可直接导入的光鸭 JSON：
+Recursively scan a local directory and generate Guangya JSON ready for import:
 
 ```bash
 guangya-fastlink generate-json \
@@ -99,7 +99,7 @@ guangya-fastlink generate-json \
   --workers 8
 ```
 
-仓库源码也支持直接执行同一组参数：
+The source checkout also supports running the same arguments directly:
 
 ```bash
 python guangya_fastlink/local_calculator.py \
@@ -108,9 +108,9 @@ python guangya_fastlink/local_calculator.py \
   --workers 8
 ```
 
-该直接入口只使用 Python 标准库，可以在尚未安装项目依赖时生成本地 GCID JSON。
+This direct entry point uses only the Python standard library, so you can generate local GCID JSON before installing the project dependencies.
 
-输出记录包含：
+Output records contain:
 
 ```json
 {
@@ -120,32 +120,32 @@ python guangya_fastlink/local_calculator.py \
 }
 ```
 
-顶层 `sourceTag` 为 `local`。输出文件位于源目录内时，扫描会排除该输出文件，因此可以安全覆盖上一次生成结果。
+The top-level `sourceTag` is `local`. If the output file is inside the source directory, the scan excludes it, allowing you to safely overwrite the previous output.
 
-GCID 使用迅雷兼容的分块双层 SHA-1：每个文件块先生成二进制 SHA-1 摘要，再按文件顺序把块摘要输入外层 SHA-1。分块大小根据文件总大小在 256 KiB、512 KiB、1 MiB 和 2 MiB 之间选择。
+GCIDs use Xunlei-compatible, two-level block SHA-1 hashing: each file block produces a binary SHA-1 digest, and those digests are fed into an outer SHA-1 hash in file order. Block sizes are selected from 256 KiB, 512 KiB, 1 MiB, and 2 MiB according to the total file size.
 
-实现使用 Python 标准库 `hashlib`。每次内部哈希输入至少为一个文件块，Python 会在超过 2047 字节的哈希计算中释放 GIL，因此多线程能够并行执行原生哈希代码。[Python hashlib 文档](https://docs.python.org/3.11/library/hashlib.html)
+The implementation uses the standard-library `hashlib` module. Python releases the GIL when hashing more than 2,047 bytes at once, allowing threads to run native hashing code in parallel for sufficiently large blocks. See the [Python hashlib documentation](https://docs.python.org/3.11/library/hashlib.html).
 
-worker 会在文件级和块级之间自动分配：大量文件并行计算多个文件，少量大文件并行计算文件块。读取队列有界，最大块为 2 MiB。计算前后会核对文件大小、修改时间和文件身份；计算过程中发生变化的文件会使命令失败，避免输出混合内容的 GCID。
+Workers are allocated automatically between files and blocks: many files are hashed in parallel at the file level, while a few large files are hashed in parallel at the block level. The read queue is bounded, and blocks are at most 2 MiB. File size, modification time, and identity are checked before and after hashing. A detected change causes the command to fail rather than produce a GCID from mixed file contents.
 
-默认 worker 数为 CPU 逻辑核心数与 8 的较小值；机械硬盘可降低 `--workers`，SSD/NVMe 可按实测吞吐调整。
+The default worker count is the smaller of the logical CPU count and 8. Reduce `--workers` for mechanical disks; tune it against measured throughput for SSDs or NVMe drives.
 
-## 目录 ID
+## Directory IDs
 
-命令参数中的字面量 `root` 表示光鸭根目录，其接口 `parentId` 为空字符串：
+The literal `root` in command arguments identifies the Guangya root directory, whose API `parentId` is an empty string:
 
 ```bash
 --target-parent-id root
 --source-parent-id root
 ```
 
-普通目录使用网页 URL 中的数字目录 ID。
+For other directories, use the numeric directory ID from the web URL.
 
-所有远端目录读取共用分页完整性校验：从第 0 页开始，要求各页 total 一致、fileId 唯一，且最终数量与 total 相等。提前空页、跨页重复或 total 变化会使命令失败；目录稳定后可重跑。校验通过才会缓存或提交该目录的扫描结果。页码分页不提供服务端快照，扫描期间宜保持源目录稳定。
+All remote directory reads share pagination integrity checks. Scanning starts at page 0, requires a consistent `total` across pages and unique `fileId` values, and verifies that the final count equals `total`. An early empty page, a duplicate across pages, or a changed `total` causes the command to fail; rerun once the directory is stable. A directory's scan results are cached or committed only after validation succeeds. Page-number pagination provides no server-side snapshot, so keep the source directory stable during scanning.
 
-## 本地与远端目录比较
+## Comparing Local and Remote Directories
 
-递归比较本地目录与光鸭目录中的文件路径，并把仅存在于本地的相对路径写入标准输出：
+Recursively compare file paths in a local directory and a Guangya directory, writing relative paths found only locally to standard output:
 
 ```bash
 guangya-fastlink compare-folder \
@@ -154,7 +154,7 @@ guangya-fastlink compare-folder \
   > missing.txt
 ```
 
-默认方向与 `--local-only` 等价，输出本地存在而远端缺少的文件。`--remote-only` 输出远端存在而本地缺少的文件。两个方向参数互斥：
+The default direction is equivalent to `--local-only`: files present locally but missing remotely. `--remote-only` selects files present remotely but missing locally. The two direction options are mutually exclusive:
 
 ```bash
 guangya-fastlink compare-folder \
@@ -163,16 +163,16 @@ guangya-fastlink compare-folder \
   --remote-only
 ```
 
-命令将两端的文件路径载入内存，以 `/` 开头并按字典序输出所选方向的差集。比较键为相对于两端指定目录的文件路径。`--local-only` 输出示例：
+The command loads both sets of file paths into memory and prints the selected set difference in lexicographic order, with a leading `/`. Paths are compared relative to the specified directory on each side. Example `--local-only` output:
 
 ```text
 /foldert/m2.txt
 /missing_file1.txt
 ```
 
-### 按 GCID 比较秒传 JSON 与远端目录
+### Comparing Rapid-Transfer JSON with a Remote Directory by GCID
 
-`--local-json` 接受本地计算器或导出器生成的秒传 JSON，按 GCID 判断内容是否存在，适用于远端文件已展平或重命名的目录：
+`--local-json` accepts rapid-transfer JSON generated by the local calculator or exporter. It checks content presence by GCID, including in remote directories where files have been flattened or renamed:
 
 ```bash
 guangya-fastlink compare-folder \
@@ -181,9 +181,9 @@ guangya-fastlink compare-folder \
   --output-file missing.json
 ```
 
-`--local-json` 与 `--local-folder` 互斥。JSON 模式必须指定独立的 `--output-file`；目录模式通过标准输出提供路径列表。
+`--local-json` and `--local-folder` are mutually exclusive. JSON mode requires a separate `--output-file`; directory mode writes a path list to standard output.
 
-默认 `--local-only` 输出本地清单中 GCID 在远端目录树中完全不存在的记录，保留本地原始相对路径和受支持的可选字段。`--remote-only` 输出远端 GCID 在本地清单中完全不存在的记录，保留远端相对路径、fileId 和 parentId（根目录的空 parentId 沿用导出格式省略）：
+The default `--local-only` direction outputs local manifest records whose GCIDs are absent from the entire remote directory tree, preserving their original relative paths and supported optional fields. `--remote-only` outputs remote records whose GCIDs are absent from the local manifest, preserving remote relative paths, `fileId`, and `parentId`. As in the export format, an empty root `parentId` is omitted:
 
 ```bash
 guangya-fastlink compare-folder \
@@ -193,15 +193,15 @@ guangya-fastlink compare-folder \
   --output-file remote-only.json
 ```
 
-匹配键仅为统一大小写后的 GCID；路径、文件名、大小作为记录数据保留。比较使用内容存在性：另一侧任意一份相同 GCID 的文件即可匹配该内容的所有路径；完全缺失的内容会保留输出侧每条原始路径记录。结果按路径排序，使用现有 `files[].path/gcid/size` JSON 格式，汇总数量与大小按输出记录重新计算。local-only 的 `sourceTag` 为 `local`，remote-only 为 `guangya`。
+The comparison key is the case-normalized GCID alone; paths, names, and sizes remain record data. Matching is based on content presence: one file with the same GCID on the other side matches every path containing that content. For entirely missing content, every original path record on the selected side is retained. Results are sorted by path and use the existing `files[].path/gcid/size` JSON format. File counts and total sizes are recalculated from the output records. The `sourceTag` is `local` for local-only output and `guangya` for remote-only output.
 
-两侧记录载入内存，每次执行都会重新扫描完整远端目录树。本地文件变化后需重新生成本地 JSON。扫描及校验成功后原子替换输出；空差集写为 `files: []` 和零计数。输入错误、远端请求失败、分页提前结束或 GCID 无效时命令失败，并保留上一次有效输出。
+Both sides' records are loaded into memory, and every run rescans the entire remote directory tree. Regenerate the local JSON after local files change. The output is replaced atomically after scanning and validation succeed. An empty difference produces `files: []` and zero counts. Invalid input, remote request failures, incomplete pagination, or invalid GCIDs cause the command to fail while preserving the previous valid output.
 
-local-only 结果中的 `files[].path` 可直接交给支持此字段的链接生成脚本，用本地原始路径构建 HTTP(S) 补全链接。remote-only 路径以远端目录为基准。
+The `files[].path` values in local-only results can be passed directly to link-generation scripts that support this field, using the original local paths to build HTTP(S) links for missing files. Remote-only paths are relative to the remote directory.
 
-## 单文件导入
+## Importing a Single JSON Manifest
 
-规划并检查 JSON，不改变远端内容：
+Plan and validate a JSON manifest without changing remote content:
 
 ```bash
 guangya-fastlink import-json \
@@ -211,7 +211,7 @@ guangya-fastlink import-json \
   --dry-run
 ```
 
-执行严格秒传：
+Run a strict rapid transfer:
 
 ```bash
 guangya-fastlink import-json \
@@ -223,9 +223,9 @@ guangya-fastlink import-json \
   --flush-every 100
 ```
 
-同一个状态数据库支持中断续跑。已有同名文件按 `gcid + fileSize` 对账：内容一致时直接完成，内容不同或对象类型冲突时记录 `failed`。这也覆盖远端完成后本地尚未提交状态时发生的中断。
+Reuse the same state database to resume an interrupted import. Existing files with the same name are reconciled by `gcid + fileSize`: matching content is marked complete, while different content or an object-type collision is recorded as `failed`. This also handles interruptions after remote completion but before the local state is committed.
 
-重新排队 `failed` 和 `not_reusable`：
+Requeue `failed` and `not_reusable` records:
 
 ```bash
 guangya-fastlink import-json \
@@ -235,9 +235,9 @@ guangya-fastlink import-json \
   --retry-failed
 ```
 
-运行结束后，失败和未命中记录写入与状态数据库相邻的 `*.retry.export.json`。输出沿用光鸭 JSON 格式，可以再次导入。
+At the end of a run, failed and non-reusable records are written to a `*.retry.export.json` file beside the state database. The output uses the Guangya JSON format and can be imported again.
 
-## 递归导出
+## Recursive Export
 
 ```bash
 guangya-fastlink export-json \
@@ -248,11 +248,11 @@ guangya-fastlink export-json \
   --max-retries 5
 ```
 
-导出器递归读取 `resType=2` 的目录和 `resType=1` 的文件。扫描进度保存在状态 JSON 和 `records.jsonl` sidecar 中；最终输出通过临时文件原子提交，成功后清理内部状态文件。
+The exporter recursively reads directories with `resType=2` and files with `resType=1`. Scan progress is stored in the state JSON and a `*.records.jsonl` sidecar. The final output is committed atomically through a temporary file, and internal state files are cleaned up after success.
 
-导出续跑要求状态包含当前分页校验版本。版本缺失或不兼容时会提示使用新的 `--state-file` 完整重扫，原状态和输出文件保留。
+Resuming an export requires state containing the current pagination-validation version. If that version is missing or incompatible, the command asks you to rescan with a new `--state-file`, preserving the original state and output files.
 
-## 批量导入
+## Batch Import
 
 ```bash
 guangya-fastlink batch-import-json \
@@ -263,13 +263,13 @@ guangya-fastlink batch-import-json \
   --json-parallelism 2
 ```
 
-命令递归发现 `*.json`，为每个 JSON 建立独立 SQLite 状态数据库。所有任务先完成本地路径碰撞检查，再开始远端变更。`--dry-run` 只执行发现、解析、规划和碰撞检查。
+The command recursively discovers `*.json` files and creates a separate SQLite state database for each manifest. All jobs complete local path-collision checks before any remote changes begin. `--dry-run` performs only discovery, parsing, planning, and collision checks.
 
-输入目录与状态目录必须彼此独立，任一目录都不能是另一目录的祖先或子目录。单个 JSON 的解析失败会计入 batch 失败并继续执行其他已成功规划的任务；跨任务目标路径碰撞会在所有远端变更前终止 batch。
+The input and state directories must be disjoint: neither may equal, contain, or be contained by the other. A parsing failure in one JSON manifest counts as a batch failure while other successfully planned jobs continue. Target-path collisions across jobs abort the batch before any remote changes.
 
-## 批量差异检查
+## Batch Difference Checks
 
-按路径检查：
+Check by path:
 
 ```bash
 guangya-fastlink batch-check-json \
@@ -280,7 +280,7 @@ guangya-fastlink batch-check-json \
   --exist-only
 ```
 
-按路径、GCID 和大小检查：
+Check by path, GCID, and size:
 
 ```bash
 guangya-fastlink batch-check-json \
@@ -291,21 +291,21 @@ guangya-fastlink batch-check-json \
   --with-checksum
 ```
 
-每个任务维护独立 check state。缺失或内容不一致的文件写入 `*.delta.export.json`；没有文件差异时清理对应的旧 delta 文件。目录缺失计入状态摘要，并使其下的预期文件进入 delta。
+Each job maintains separate check state. Missing files or files with mismatched content are written to `*.delta.export.json`. When there are no file differences, the corresponding old delta file is removed. Missing directories count toward the state summary and place the expected files beneath them in the delta output.
 
-状态数据库保存第一次检查得到的远端目录和文件快照。从 `--exist-only` 切换到 `--with-checksum`，或反向切换时，会从同一快照重新计算 delta，无需再次扫描远端。输入、状态和输出目录必须两两独立。
+The state database stores the remote directory and file snapshot from the initial check. Switching between `--exist-only` and `--with-checksum` recalculates the delta from the same snapshot without rescanning the remote tree. The input, state, and output directories must be pairwise disjoint.
 
-检查状态使用 v3。打开作用域一致的 v2 数据库时，会保留本地清单规划、清空远端扫描结果，并升级后重新扫描，以建立经过分页完整性校验的快照。v3 扫描失败时保留已验证的进度，后续重跑继续处理未完成项。
+Check state uses schema v3. Opening a v2 database with a matching scope preserves the local manifest plan, clears remote scan results, upgrades the schema, and rescans to establish a pagination-validated snapshot. If a v3 scan fails, validated progress is preserved; subsequent runs resume unfinished work.
 
-## 退出状态
+## Exit Status
 
-- `0`：命令完成；单文件或批量导入可以包含 `not_reusable`。
-- `1`：启动校验、凭证、路径碰撞、远端请求或文件导入出现失败。
+- `0`: The command completed. Single-manifest and batch imports may still include `not_reusable` records.
+- `1`: Startup validation, credentials, path collisions, remote requests, or file imports failed.
 
-严格秒传的业务分类：
+Strict rapid-transfer response handling:
 
-- `code=156`：完成。
-- `code=159`：同名目录已存在，并复用响应中的目录 ID。
-- HTTP 401/403 或 `code=117`：凭证失效。
-- HTTP 429 和 5xx：可重试。
-- 返回普通上传任务且没有 `code=156`：尝试清理任务并记录 `not_reusable`。
+- `code=156`: Transfer complete.
+- `code=159`: A directory with the same name already exists; reuse the directory ID in the response.
+- HTTP 401/403 or `code=117`: Invalid credentials.
+- HTTP 429 and 5xx: Retryable.
+- A regular upload task returned without `code=156`: Attempt to delete the task and record `not_reusable`.

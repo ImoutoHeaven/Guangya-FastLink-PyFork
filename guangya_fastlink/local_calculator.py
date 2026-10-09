@@ -7,7 +7,7 @@ import sys
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -84,7 +84,6 @@ def scan_local_files(source_dir: Path, output_file: Path) -> list[FileSnapshot]:
 def calculate_gcid(snapshot: FileSnapshot, *, workers: int = 1) -> str:
     if workers < 1:
         raise ValueError("workers must be >= 1")
-    _assert_unchanged(snapshot, snapshot.path.stat())
     block_size = gcid_block_size(snapshot.size)
     block_count = (snapshot.size + block_size - 1) // block_size
     chunk_workers = min(workers, max(1, block_count))
@@ -92,7 +91,12 @@ def calculate_gcid(snapshot: FileSnapshot, *, workers: int = 1) -> str:
     total_read = 0
 
     with snapshot.path.open("rb") as handle:
-        _assert_unchanged(snapshot, os.fstat(handle.fileno()))
+        opened = os.fstat(handle.fileno())
+        if not stat_module.S_ISREG(opened.st_mode):
+            raise RuntimeError(f"source is no longer a regular file: {snapshot.path}")
+        # FUSE may reassign an inode while a scanned file waits in the queue.
+        snapshot = replace(snapshot, device=int(opened.st_dev), inode=int(opened.st_ino))
+        _assert_unchanged(snapshot, opened)
         if chunk_workers == 1:
             while block := handle.read(block_size):
                 outer.update(hashlib.sha1(block, usedforsecurity=False).digest())
